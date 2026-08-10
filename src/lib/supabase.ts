@@ -14,3 +14,15 @@ export const supabase: SupabaseClient | null = supabaseConfigured
       },
     })
   : null;
+
+// Keep the Functions client synchronized with the current Supabase access token.
+// This is important for Edge Functions that perform their own user validation.
+if (supabase) {
+  supabase.auth.getSession().then(({ data }) => {
+    supabase.functions.setAuth(data.session?.access_token ?? '');
+  });
+
+  supabase.auth.onAuthStateChange((_event, session) => {
+    supabase.functions.setAuth(session?.access_token ?? '');
+  });
+}
