@@ -33,7 +33,11 @@ const response = await fetch(
   'https://qvkjzukzfhbpzevqpwqz.supabase.co/functions/v1/website-lead-capture',
   {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'apikey': 'sb_publishable_ck1id-iY6uVhcOK5HXP1UA_DIa6Hy9Y',
+      'Authorization': 'Bearer sb_publishable_ck1id-iY6uVhcOK5HXP1UA_DIa6Hy9Y'
+    },
     body: JSON.stringify({
       name: fullName,
       phone: whatsappPhone,
@@ -48,6 +52,14 @@ const response = await fetch(
 
 const result = await response.json();
 if (!response.ok) throw new Error(result.error || 'Unable to submit lead');
+```
+
+## Edge Function Deployment (Optional)
+
+The function source code is located in `/supabase/functions/website-lead-capture/index.ts`. To deploy:
+
+```bash
+supabase functions deploy website-lead-capture --no-verify-jwt
 ```
 
 ## Result

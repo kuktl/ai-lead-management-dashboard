@@ -1,0 +1,4 @@
+project_id = "qvkjzukzfhbpzevqpwqz"
+
+[functions.website-lead-capture]
+verify_jwt = false

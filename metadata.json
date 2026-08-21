@@ -1,0 +1,6 @@
+{
+  "name": "AI Lead Management Dashboard",
+  "description": "AI-powered lead management and automation platform dashboard for managing CRM leads, automations, chat, and voice agents.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

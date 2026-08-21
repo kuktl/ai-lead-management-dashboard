@@ -1,55 +1,366 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import confetti from 'canvas-confetti';
+import { View, Lead, UserSession, VoiceAgentConfig, AutomationWorkflow, ChatbotConfig } from './types';
+import { StorageService } from './lib/storage';
 import { supabase, supabaseConfigured } from './lib/supabase';
+import { Sidebar } from './components/Sidebar';
+import { Topbar } from './components/Topbar';
+import { LandingPage } from './components/LandingPage';
+import { OverviewView } from './components/OverviewView';
+import { LeadsView } from './components/LeadsView';
+import { LeadModal } from './components/LeadModal';
+import { LeadDetailDrawer } from './components/LeadDetailDrawer';
+import { AutomationsView } from './components/AutomationsView';
+import { AIChatStudio } from './components/AIChatStudio';
+import { VoiceAgentStudio } from './components/VoiceAgentStudio';
+import { VoiceCallModal } from './components/VoiceCallModal';
+import { IntegrationsView } from './components/IntegrationsView';
+import { SettingsView } from './components/SettingsView';
 
-type Lead = { id: string; name: string; company: string | null; source_id: string | null; estimated_value: number; status: string; score: number; email: string | null; phone: string | null };
-type View = 'Overview' | 'Leads' | 'Automations' | 'AI Chat' | 'Voice Agent' | 'Integrations' | 'Settings';
-type ElevenVoice = { voice_id: string; name: string; category?: string; description?: string; preview_url?: string };
+export function App() {
+  const [session, setSession] = useState<UserSession | null>(null);
+  const [currentView, setCurrentView] = useState<View>('Overview');
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [workflows, setWorkflows] = useState<AutomationWorkflow[]>([]);
+  const [voiceAgents, setVoiceAgents] = useState<VoiceAgentConfig[]>([]);
+  const [chatbotConfig, setChatbotConfig] = useState<ChatbotConfig>(StorageService.getChatbotConfig());
+  const [loading, setLoading] = useState(true);
 
-const nav: { name: View; icon: string; desc: string }[] = [
-  { name: 'Overview', icon: '◈', desc: 'Command center' }, { name: 'Leads', icon: '◎', desc: 'CRM & pipeline' },
-  { name: 'Automations', icon: '✦', desc: 'Workflows' }, { name: 'AI Chat', icon: '◌', desc: 'Website & social' },
-  { name: 'Voice Agent', icon: '◉', desc: 'AI calling' }, { name: 'Integrations', icon: '⌘', desc: 'Channels & apps' }, { name: 'Settings', icon: '⚙', desc: 'Workspace' },
-];
-const integrations = [['Instagram','DM automation, comments, story replies','Meta'],['WhatsApp','Inbound chat, templates, lead routing','Meta'],['Google','Sign-in, Sheets, Calendar, Drive','Google'],['Website Chat','Embeddable AI sales assistant','AI'],['Voice','Outbound calls, qualification, callbacks','Telephony'],['Meta Ads','Lead forms → CRM → automation','Meta']];
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
 
-export default function App() {
-  const [session, setSession] = useState<any>(null); const [view, setView] = useState<View>('Overview'); const [loginOpen, setLoginOpen] = useState(false);
-  const [leads, setLeads] = useState<Lead[]>([]); const [loading, setLoading] = useState(false); const [query, setQuery] = useState(''); const [showLead, setShowLead] = useState(false);
-  useEffect(() => { if (!supabase) return; supabase.auth.getSession().then(({data})=>setSession(data.session)); const {data:listener}=supabase.auth.onAuthStateChange((_e,next)=>setSession(next)); return ()=>listener.subscription.unsubscribe(); }, []);
-  useEffect(() => { if (session) loadLeads(); }, [session]);
-  async function loadLeads(){ if(!supabase)return; setLoading(true); const {data}=await supabase.from('leads').select('id,name,company,source_id,estimated_value,status,score,email,phone').order('created_at',{ascending:false}).limit(50); setLeads((data??[]) as Lead[]); setLoading(false); }
-  async function googleLogin(){ if(!supabaseConfigured||!supabase){ alert('Google login is not configured yet. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY to the Vercel project environment variables.'); return; } const {error}=await supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin}}); if(error)alert(error.message); }
-  async function signOut(){ if(supabase) await supabase.auth.signOut(); setView('Overview'); }
-  const filtered=useMemo(()=>leads.filter(l=>`${l.name} ${l.company??''} ${l.phone??''}`.toLowerCase().includes(query.toLowerCase())),[leads,query]); const totalValue=leads.reduce((s,l)=>s+Number(l.estimated_value||0),0);
-  if(!session) return <Landing onLogin={()=>setLoginOpen(true)} loginOpen={loginOpen} closeLogin={()=>setLoginOpen(false)} onGoogle={googleLogin} configured={supabaseConfigured}/>;
-  return <div className="app-shell"><aside className="sidebar"><div className="brand"><div className="brand-mark">Z</div><div><strong>FlowPilot</strong><span>AI AUTOMATION OS</span></div></div><div className="workspace"><span className="avatar">{(session.user.user_metadata?.full_name||session.user.email||'U').slice(0,2).toUpperCase()}</span><div><b>{session.user.user_metadata?.full_name||'My Workspace'}</b><small>{session.user.email}</small></div></div><nav>{nav.map(item=><button key={item.name} className={view===item.name?'active':''} onClick={()=>setView(item.name)}><span>{item.icon}</span><div><b>{item.name}</b><small>{item.desc}</small></div></button>)}</nav><div className="sidebar-bottom"><div className="connection"><i/> Supabase connected</div><button onClick={signOut}>↪ Sign out</button></div></aside><main className="main"><header className="topbar"><div><p className="crumb">Workspace / {view}</p><h1>{view}</h1></div><div className="top-actions"><button className="icon">⌕</button><button className="icon">⌁</button><div className="user-avatar">{(session.user.email||'U')[0].toUpperCase()}</div></div></header>{view==='Overview'&&<Overview leads={leads} totalValue={totalValue} onNavigate={setView}/>} {view==='Leads'&&<Leads leads={filtered} query={query} setQuery={setQuery} loading={loading} onRefresh={loadLeads} onAdd={()=>setShowLead(true)}/>} {view==='Automations'&&<AutomationHub/>}{view==='AI Chat'&&<AIChat/>}{view==='Voice Agent'&&<VoiceAgent/>}{view==='Integrations'&&<Integrations/>}{view==='Settings'&&<Settings email={session.user.email||''}/>} {showLead&&<LeadModal close={()=>setShowLead(false)} onCreated={()=>{setShowLead(false);loadLeads();}}/>}</main></div>;
+  // Modals and Drawers
+  const [isAddLeadOpen, setIsAddLeadOpen] = useState(false);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+
+  // Voice Call Modal state
+  const [isVoiceCallOpen, setIsVoiceCallOpen] = useState(false);
+  const [activeCallingLead, setActiveCallingLead] = useState<Lead | null>(null);
+  const [activeCallingAgent, setActiveCallingAgent] = useState<VoiceAgentConfig | null>(null);
+
+  // Check initial session & load data
+  useEffect(() => {
+    let authSubscription: { unsubscribe: () => void } | null = null;
+
+    const initApp = async () => {
+      setLoading(true);
+
+      // Check Supabase session if configured
+      if (supabaseConfigured && supabase) {
+        try {
+          const { data } = await supabase.auth.getSession();
+          if (data.session?.user) {
+            setSession({
+              email: data.session.user.email || 'user@flowpilot.ai',
+              name: data.session.user.user_metadata?.full_name || data.session.user.email?.split('@')[0] || 'Team Admin',
+              isDemo: false,
+            });
+          }
+
+          // Subscribe to auth state changes (OAuth redirects, popup callbacks, magic links)
+          const { data: authListener } = supabase.auth.onAuthStateChange((event, newSession) => {
+            if (newSession?.user) {
+              setSession({
+                email: newSession.user.email || 'user@flowpilot.ai',
+                name: newSession.user.user_metadata?.full_name || newSession.user.email?.split('@')[0] || 'Team Admin',
+                isDemo: false,
+              });
+            } else if (event === 'SIGNED_OUT') {
+              setSession(null);
+            }
+          });
+          authSubscription = authListener.subscription;
+        } catch (e) {
+          console.warn('Supabase auth session check failed', e);
+        }
+      }
+
+      // Load initial storage data
+      const loadedLeads = await StorageService.getLeads();
+      setLeads(loadedLeads);
+      setWorkflows(StorageService.getWorkflows());
+      setVoiceAgents(StorageService.getVoiceAgents());
+      setChatbotConfig(StorageService.getChatbotConfig());
+      setLoading(false);
+    };
+
+    initApp();
+
+    return () => {
+      if (authSubscription) {
+        authSubscription.unsubscribe();
+      }
+    };
+  }, []);
+
+  const refreshLeads = async () => {
+    setLoading(true);
+    const data = await StorageService.getLeads();
+    setLeads(data);
+    setLoading(false);
+  };
+
+  const handleEnterApp = (isDemo: boolean, user?: { email: string; name: string }) => {
+    setSession({
+      email: user?.email || 'demo.admin@flowpilot.ai',
+      name: user?.name || 'Demo Workspace',
+      isDemo,
+    });
+    setCurrentView('Overview');
+  };
+
+  const handleSignOut = async () => {
+    if (supabaseConfigured && supabase) {
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {}
+    }
+    setSession(null);
+    setCurrentView('Overview');
+  };
+
+  const handleSaveLead = async (leadData: any) => {
+    const isNew = !leadData.id;
+    const saved = await StorageService.saveLead(leadData);
+    await refreshLeads();
+
+    if (isNew) {
+      confetti({
+        particleCount: 50,
+        spread: 60,
+        origin: { y: 0.8 },
+      });
+    }
+
+    if (selectedLead && selectedLead.id === saved.id) {
+      setSelectedLead(saved);
+    }
+  };
+
+  const handleDeleteLead = async (id: string) => {
+    await StorageService.deleteLead(id);
+    if (selectedLead?.id === id) setSelectedLead(null);
+    await refreshLeads();
+  };
+
+  const handleUpdateStatus = async (id: string, status: any) => {
+    const lead = leads.find((l) => l.id === id);
+    if (!lead) return;
+
+    const updated = await StorageService.saveLead({
+      ...lead,
+      status,
+    });
+
+    if (status === 'won') {
+      confetti({
+        particleCount: 100,
+        spread: 80,
+        origin: { y: 0.6 },
+      });
+    }
+
+    await refreshLeads();
+    if (selectedLead?.id === id) {
+      setSelectedLead(updated);
+    }
+  };
+
+  const handleToggleWorkflow = (id: string) => {
+    const updated = workflows.map((w) => (w.id === id ? { ...w, enabled: !w.enabled } : w));
+    setWorkflows(updated);
+    StorageService.saveWorkflows(updated);
+  };
+
+  const handleSaveVoiceAgent = (agent: VoiceAgentConfig) => {
+    const updated = [agent, ...voiceAgents];
+    setVoiceAgents(updated);
+    StorageService.saveVoiceAgents(updated);
+  };
+
+  const handleDeleteVoiceAgent = (id: string) => {
+    const updated = voiceAgents.filter((a) => a.id !== id);
+    setVoiceAgents(updated);
+    StorageService.saveVoiceAgents(updated);
+  };
+
+  const handleResetData = async () => {
+    const fresh = await StorageService.resetToDemoData();
+    setLeads(fresh);
+    setWorkflows(StorageService.getWorkflows());
+    setVoiceAgents(StorageService.getVoiceAgents());
+    setChatbotConfig(StorageService.getChatbotConfig());
+    setSelectedLead(null);
+  };
+
+  const handleTriggerVoiceCall = (lead?: Lead | null, agent?: VoiceAgentConfig | null) => {
+    setActiveCallingLead(lead || null);
+    setActiveCallingAgent(agent || voiceAgents[0] || null);
+    setIsVoiceCallOpen(true);
+  };
+
+  // If no session, show Landing Page
+  if (!session) {
+    return <LandingPage onEnterApp={handleEnterApp} />;
+  }
+
+  return (
+    <div className="min-h-screen bg-[#070b14] text-slate-100 flex font-sans antialiased selection:bg-indigo-500 selection:text-white">
+      {/* Sidebar Navigation */}
+      <Sidebar
+        currentView={currentView}
+        onSelectView={(v) => {
+          setCurrentView(v);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        session={session}
+        onSignOut={handleSignOut}
+      />
+
+      {/* Main Workspace Frame */}
+      <div className="pl-64 flex-1 flex flex-col min-w-0">
+        {/* Top Header Bar */}
+        <Topbar
+          currentView={currentView}
+          session={session}
+          onOpenAddLead={() => {
+            setEditingLead(null);
+            setIsAddLeadOpen(true);
+          }}
+          onResetData={handleResetData}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+        />
+
+        {/* View Routing */}
+        <main className="flex-1 p-6 sm:p-8 overflow-y-auto">
+          {currentView === 'Overview' && (
+            <OverviewView
+              leads={leads}
+              onNavigate={setCurrentView}
+              onOpenAddLead={() => {
+                setEditingLead(null);
+                setIsAddLeadOpen(true);
+              }}
+              onSelectLead={setSelectedLead}
+            />
+          )}
+
+          {currentView === 'Leads' && (
+            <LeadsView
+              leads={leads}
+              onAddLead={() => {
+                setEditingLead(null);
+                setIsAddLeadOpen(true);
+              }}
+              onSelectLead={setSelectedLead}
+              onUpdateStatus={handleUpdateStatus}
+              onDeleteLead={handleDeleteLead}
+              onTriggerCall={(lead) => handleTriggerVoiceCall(lead)}
+              onRefresh={refreshLeads}
+              loading={loading}
+            />
+          )}
+
+          {currentView === 'Automations' && (
+            <AutomationsView
+              workflows={workflows}
+              onToggleWorkflow={handleToggleWorkflow}
+              leads={leads}
+            />
+          )}
+
+          {currentView === 'AI Chat' && (
+            <AIChatStudio
+              config={chatbotConfig}
+              onSaveConfig={(cfg) => {
+                setChatbotConfig(cfg);
+                StorageService.saveChatbotConfig(cfg);
+              }}
+              onLeadCaptured={async (name, phone, email, budget) => {
+                await StorageService.saveLead({
+                  name,
+                  company: null,
+                  phone,
+                  email,
+                  source_id: 'website',
+                  status: 'new',
+                  estimated_value: budget || 150000,
+                  service_interest: 'AI Chatbot Inbound Inquiry',
+                });
+                await refreshLeads();
+              }}
+            />
+          )}
+
+          {currentView === 'Voice Agent' && (
+            <VoiceAgentStudio
+              agents={voiceAgents}
+              voices={StorageService.getVoices()}
+              onTriggerCallWithAgent={(ag) => handleTriggerVoiceCall(leads[0], ag)}
+              onSaveAgent={handleSaveVoiceAgent}
+              onDeleteAgent={handleDeleteVoiceAgent}
+            />
+          )}
+
+          {currentView === 'Integrations' && (
+            <IntegrationsView
+              onLeadCaptured={async (lead) => {
+                await refreshLeads();
+                setSelectedLead(lead);
+              }}
+            />
+          )}
+
+          {currentView === 'Settings' && (
+            <SettingsView session={session} onResetData={handleResetData} />
+          )}
+        </main>
+      </div>
+
+      {/* Add / Edit Lead Modal */}
+      {isAddLeadOpen && (
+        <LeadModal
+          isOpen={isAddLeadOpen}
+          onClose={() => {
+            setIsAddLeadOpen(false);
+            setEditingLead(null);
+          }}
+          onSave={handleSaveLead}
+          initialData={editingLead}
+        />
+      )}
+
+      {/* Lead Detail Drawer */}
+      {selectedLead && (
+        <LeadDetailDrawer
+          lead={selectedLead}
+          onClose={() => setSelectedLead(null)}
+          onEdit={(lead) => {
+            setEditingLead(lead);
+            setIsAddLeadOpen(true);
+          }}
+          onDelete={handleDeleteLead}
+          onUpdateStatus={handleUpdateStatus}
+          onTriggerCall={(lead) => handleTriggerVoiceCall(lead)}
+          onRescored={(updated) => {
+            setSelectedLead(updated);
+            refreshLeads();
+          }}
+        />
+      )}
+
+      {/* Interactive Voice Calling Modal */}
+      {isVoiceCallOpen && (
+        <VoiceCallModal
+          isOpen={isVoiceCallOpen}
+          onClose={() => setIsVoiceCallOpen(false)}
+          lead={activeCallingLead}
+          agent={activeCallingAgent}
+        />
+      )}
+    </div>
+  );
 }
-
-function Landing({onLogin,loginOpen,closeLogin,onGoogle,configured}:{onLogin:()=>void;loginOpen:boolean;closeLogin:()=>void;onGoogle:()=>void;configured:boolean}){return <div className="landing"><div className="orb orb-one"/><div className="orb orb-two"/><header className="landing-nav"><div className="brand"><div className="brand-mark">Z</div><strong>FlowPilot</strong></div><div className="nav-links"><a href="#features">Features</a><a href="#channels">Channels</a><a href="#agents">AI Agents</a></div><button className="login-top" onClick={onLogin}>Log in <span>↗</span></button></header><section className="hero-section"><div className="hero-copy"><div className="pill"><i/> AI automation platform for modern sales teams</div><h2>One workspace.<br/><em>Every conversation.</em><br/>Fully automated.</h2><p>Capture leads, chat on your website, automate Instagram and WhatsApp, qualify with AI voice calls, and move every opportunity through your pipeline.</p><div className="hero-actions"><button className="primary large" onClick={onLogin}>Start building free <span>→</span></button><button className="ghost large" onClick={onLogin}>See the workspace</button></div><div className="trusted"><span>Built with</span><b>Supabase</b><b>Google</b><b>Meta</b><b>AI</b></div></div><div className="hero-visual"><div className="visual-glow"/><div className="dashboard-float"><div className="mini-head"><span>AI COMMAND CENTER</span><i/></div><div className="mini-number">1,284 <small>active leads</small></div><div className="mini-bars"><i/><i/><i/><i/><i/><i/><i/></div><div className="mini-row"><span>AI calls</span><b>86 today</b></div><div className="mini-row"><span>Automation</span><b className="green">92% healthy</b></div></div><div className="float-card float-chat">✦ <b>AI qualified</b><span>11 hot leads</span></div><div className="float-card float-call">◉ <b>Voice agent</b><span>Calling #204</span></div></div></section><section className="feature-strip" id="features">{[['◎','Real CRM','Every lead, activity and pipeline stage in one place.'],['✦','AI Automations','Build trigger → action workflows without code.'],['◉','Voice Agents','Qualify leads and schedule callbacks automatically.'],['⌘','Omnichannel','Instagram, WhatsApp, web chat and more.']].map(x=><article key={x[1]}><span>{x[0]}</span><h3>{x[1]}</h3><p>{x[2]}</p></article>)}</section>{loginOpen&&<div className="modal-backdrop" onClick={closeLogin}><div className="login-card" onClick={e=>e.stopPropagation()}><button className="close" onClick={closeLogin}>×</button><div className="brand centered"><div className="brand-mark">Z</div></div><h3>Welcome to FlowPilot</h3><p>Sign in to open your automation workspace.</p><button className="google-btn" onClick={onGoogle}><span>G</span> Continue with Google <b>→</b></button>{!configured&&<div className="setup-warning">Google login is waiting for Supabase environment variables in Vercel.</div>}<div className="divider"><span>Secure authentication via Supabase</span></div><small>By continuing, you agree to our terms and privacy policy.</small></div></div>}</div>}
-
-function Overview({leads,totalValue,onNavigate}:{leads:Lead[];totalValue:number;onNavigate:(v:View)=>void}){return <div className="page"><section className="welcome"><div><p className="eyebrow">COMMAND CENTER · AUG 10</p><h2>Build, automate, scale. <span>✦</span></h2><p>Your sales operations are connected. Choose an area below to start building.</p></div><button className="primary" onClick={()=>onNavigate('Automations')}>＋ Create automation</button></section><section className="stat-grid">{[['Total leads',String(leads.length),'Live database'],['Hot leads',String(leads.filter(x=>x.score>=80).length),'Score ≥ 80'],['AI calls','0','Connect voice provider'],['Pipeline value',`₹${(totalValue/100000).toFixed(1)}L`,'Live from Supabase']].map(x=><article className="stat" key={x[0]}><span>{x[0]}</span><strong>{x[1]}</strong><p>{x[2]}</p></article>)}</section><section className="section-title"><div><h3>Automation universe</h3><p>Every channel is designed to connect to the same lead database.</p></div></section><div className="module-grid">{[['Automations','Create trigger → action workflows','✦','Automations'],['AI Chat','Build your own sales chatbot','◌','AI Chat'],['Voice Agent','Design an AI calling agent','◉','Voice Agent'],['Integrations','Connect Meta, Google & more','⌘','Integrations']].map(x=><button className="module-card" key={x[0]} onClick={()=>onNavigate(x[3] as View)}><span className="module-icon">{x[2]}</span><h3>{x[0]}</h3><p>{x[1]}</p><b>Open workspace →</b></button>)}</div><section className="health"><div><i/> Platform healthy</div><span>Supabase database · Authentication · RLS enabled</span></section></div>}
-function Leads({leads,query,setQuery,loading,onRefresh,onAdd}:{leads:Lead[];query:string;setQuery:(v:string)=>void;loading:boolean;onRefresh:()=>void;onAdd:()=>void}){return <div className="page"><div className="page-actions"><div><h2>Leads</h2><p>Real records from your Supabase database.</p></div><button className="primary" onClick={onAdd}>＋ Add lead</button></div><div className="card table-card"><div className="table-tools"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search name, company or phone..."/><button onClick={onRefresh}>↻ Refresh</button></div>{loading?<div className="empty">Loading your leads…</div>:<div className="table-wrap"><table><thead><tr><th>Lead</th><th>Company</th><th>Phone</th><th>Value</th><th>Score</th><th>Status</th></tr></thead><tbody>{leads.map(l=><tr key={l.id}><td><div className="lead-name"><span className="person">{l.name.split(' ').map(x=>x[0]).join('').slice(0,2)}</span><b>{l.name}</b></div></td><td>{l.company||'—'}</td><td>{l.phone||'—'}</td><td>₹{Number(l.estimated_value||0).toLocaleString('en-IN')}</td><td><span className="score">{l.score}</span></td><td><span className={`badge ${l.status}`}>{l.status}</span></td></tr>)}{!leads.length&&<tr><td colSpan={6}><div className="empty">No leads yet. Add your first lead.</div></td></tr>}</tbody></table></div>}</div></div>}
-function AutomationHub(){const[created,setCreated]=useState(false);return <div className="page"><div className="page-actions"><div><h2>Automation Builder</h2><p>Connect events, AI actions and channels into repeatable workflows.</p></div><button className="primary" onClick={()=>setCreated(true)}>＋ New automation</button></div><div className="builder-card"><div className="builder-step"><span>01</span><div><b>WHEN</b><h3>New lead enters CRM</h3><p>Trigger from website, Meta Ads, WhatsApp, Instagram or API.</p></div></div><div className="connector">↓</div><div className="builder-step"><span>02</span><div><b>AI</b><h3>Qualify & enrich lead</h3><p>Ask questions, score intent, classify hot/warm/cold.</p></div></div><div className="connector">↓</div><div className="builder-step"><span>03</span><div><b>THEN</b><h3>Run actions</h3><p>Send WhatsApp, start AI call, assign sales owner, create task.</p></div></div></div>{created&&<div className="toast">✦ Automation draft created. Connect a channel to activate it.</div>}</div>}
-function AIChat(){return <div className="page"><div className="page-actions"><div><h2>AI Chat Studio</h2><p>Create one sales brain and deploy it across your website and social channels.</p></div><button className="primary">Deploy agent</button></div><div className="studio-grid"><div className="card chat-preview"><div className="chat-top"><span className="live"><i/> ONLINE</span><b>FlowPilot Sales Agent</b></div><div className="messages"><div className="bot">Hi! 👋 I can help you find the right project. What are you looking for?</div><div className="user-msg">I need a 3BHK under ₹1.2 crore.</div><div className="bot">Perfect. I found 4 matching options. Would you like me to schedule a call?</div></div><div className="chat-input">Type a message… <b>↗</b></div></div><div className="card config"><h3>Agent configuration</h3>{[['Personality','Friendly sales consultant'],['Knowledge','Products, FAQs & pricing'],['Lead capture','Name · phone · budget'],['Actions','Create lead · WhatsApp · call']].map(x=><div className="config-row" key={x[0]}><span>{x[0]}</span><b>{x[1]}</b></div>)}<button className="secondary">＋ Add knowledge source</button></div></div></div>}
-
-function VoiceAgent(){
-  const [open,setOpen]=useState(false); const [voices,setVoices]=useState<ElevenVoice[]>([]); const [agents,setAgents]=useState<any[]>([]); const [loading,setLoading]=useState(false); const [loadingVoices,setLoadingVoices]=useState(false); const [error,setError]=useState(''); const [success,setSuccess]=useState('');
-  const [name,setName]=useState('FlowPilot AI Sales Caller'); const [voiceId,setVoiceId]=useState(''); const [language,setLanguage]=useState('en'); const [firstMessage,setFirstMessage]=useState('Hi, this is the FlowPilot AI assistant. How can I help you today?'); const [prompt,setPrompt]=useState('You are a friendly AI sales caller. Qualify the lead, answer questions accurately, collect useful requirements, and hand off to a human when the customer is ready.');
-  const call=async(action:string,extra:Record<string,unknown>={})=>{if(!supabase){setError('Supabase is not connected.');return null;} const {data,error}=await supabase.functions.invoke('elevenlabs-voice-agents-v2',{body:{action,...extra}}); if(error){setError(error.message);return null;} if(data?.error){setError(data.error);return null;} return data;};
-  const loadVoices=async()=>{setError('');setLoadingVoices(true);const data=await call('voices');setLoadingVoices(false);if(data)setVoices((data.voices||[]) as ElevenVoice[]);};
-  const loadAgents=async()=>{const data=await call('list');if(data)setAgents(data.agents||[]);};
-  useEffect(()=>{loadAgents();},[]);
-  const create=async(e:FormEvent)=>{e.preventDefault();setError('');setSuccess('');setLoading(true);const data=await call('create',{name,voice_id:voiceId,language,first_message:firstMessage,system_prompt:prompt});setLoading(false);if(data){setSuccess(`Agent created successfully. ElevenLabs Agent ID: ${data.agent_id}`);setOpen(false);loadAgents();}};
-  return <div className="page"><div className="page-actions"><div><p className="eyebrow">ELEVENLABS CONVERSATIONAL AI</p><h2>Voice Agent Studio</h2><p>Create and manage real AI voice agents from FlowPilot.</p></div><button className="primary" onClick={()=>{setOpen(true);setError('');setSuccess('');}}>＋ Create your voice agent</button></div>
-    {error&&<div className="toast" style={{borderColor:'rgba(255,90,90,.35)'}}>⚠ {error}</div>}{success&&<div className="toast">✓ {success}</div>}
-    <div className="voice-hero"><div className="wave">{Array.from({length:9},(_,i)=><i key={i}/>)}</div><span>VOICE AGENT ENGINE</span><h3>ElevenLabs Conversational AI</h3><p>Real-time voice conversations powered by your ElevenLabs workspace.</p><div className="voice-actions"><button className="primary" onClick={()=>setOpen(true)}>Create agent</button><button className="secondary" onClick={loadVoices}>{loadingVoices?'Loading voices…':'Load ElevenLabs voices'}</button></div></div>
-    <div className="stat-grid">{[['Agents',String(agents.length),'Saved in FlowPilot'],['Provider','ElevenLabs','Conversational AI'],['Status',agents.length?'Ready':'Waiting','Create your first agent'],['Languages','Multi-language','Configured per agent']].map(x=><article className="stat" key={x[0]}><span>{x[0]}</span><strong>{x[1]}</strong><p>{x[2]}</p></article>)}</div>
-    <div className="card" style={{padding:'24px',marginTop:20}}><h3>Your voice agents</h3>{agents.length===0?<div className="empty">No voice agents created yet. Click “Create your voice agent” to start.</div>:<div className="module-grid small">{agents.map(a=><article className="info-card" key={a.agent_id||a.id}><span>◉</span><h3>{a.name}</h3><p>{a.agent_id}</p><small>ElevenLabs · {a.archived?'Archived':'Active in ElevenLabs'}</small></article>)}</div>}</div>
-    <div className="module-grid small">{[['Script','Greeting, qualification & objection handling'],['Voice','Select any voice available in your ElevenLabs account'],['Rules','Call windows, retry policy & outcomes'],['Handoff','Transfer hot leads to your sales team']].map(x=><article className="info-card" key={x[0]}><span>✦</span><h3>{x[0]}</h3><p>{x[1]}</p></article>)}</div>
-    {open&&<div className="modal-backdrop" onClick={()=>setOpen(false)}><form className="login-card lead-form" onSubmit={create} onClick={e=>e.stopPropagation()}><button type="button" className="close" onClick={()=>setOpen(false)}>×</button><div className="brand centered"><div className="brand-mark">◉</div></div><h3>Create your voice agent</h3><p>This creates a real Conversational AI agent in your ElevenLabs account and saves its configuration in FlowPilot.</p><label>Agent name<input required value={name} onChange={e=>setName(e.target.value)} placeholder="AI Sales Caller"/></label><label>Voice<select required value={voiceId} onChange={e=>setVoiceId(e.target.value)}><option value="">Select an ElevenLabs voice</option>{voices.map(v=><option key={v.voice_id} value={v.voice_id}>{v.name} · {v.voice_id}</option>)}</select></label><div className="table-tools"><button type="button" className="secondary" onClick={loadVoices}>{loadingVoices?'Loading…':'Load voices'}</button><span>{voices.length?'Choose from your ElevenLabs voices.':'Load voices after configuring the API key.'}</span></div><label>Language<select value={language} onChange={e=>setLanguage(e.target.value)}><option value="en">English</option><option value="hi">Hindi</option><option value="te">Telugu</option><option value="mr">Marathi</option><option value="en-hi">English + Hindi</option></select></label><label>First message<textarea value={firstMessage} onChange={e=>setFirstMessage(e.target.value)} rows={3}/></label><label>System prompt<textarea value={prompt} onChange={e=>setPrompt(e.target.value)} rows={6}/></label><button className="primary" disabled={loading}>{loading?'Creating in ElevenLabs…':'Create voice agent'}</button><small>Your ElevenLabs API key stays server-side in Supabase Edge Function secrets; it is never sent to the browser.</small></form></div>}
-  </div>
-}
-
-function Integrations(){return <div className="page"><div className="page-actions"><div><h2>Integrations</h2><p>Connect your channels. Secrets stay server-side; the dashboard manages the connection state.</p></div></div><div className="integration-grid">{integrations.map(x=><article className="integration-card" key={x[0]}><div className="integration-logo">{x[0][0]}</div><div><h3>{x[0]}</h3><p>{x[1]}</p></div><button className="secondary">Connect</button><small>{x[2]} integration · credentials required</small></article>)}</div></div>}
-function Settings({email}:{email:string}){return <div className="page"><div className="page-actions"><div><h2>Workspace settings</h2><p>Manage authentication, database and deployment settings.</p></div></div><div className="settings-grid"><article className="card settings-card"><h3>Account</h3><label>Email<input value={email} readOnly/></label><label>Authentication<input value="Google OAuth via Supabase" readOnly/></label></article><article className="card settings-card"><h3>Environment</h3><label>Database<input value="Supabase" readOnly/></label><label>Security<input value="RLS enabled" readOnly/></label><label>Frontend<input value="React + Vite" readOnly/></label></article></div></div>}
-function LeadModal({close,onCreated}:{close:()=>void;onCreated:()=>void}){const[name,setName]=useState('');const[phone,setPhone]=useState('');const[company,setCompany]=useState('');const[value,setValue]=useState('');const[saving,setSaving]=useState(false);async function submit(e:FormEvent){e.preventDefault();if(!supabase){alert('Supabase is not configured in this deployment.');return;}setSaving(true);const{error}=await supabase.from('leads').insert({name,phone,company,estimated_value:Number(value||0),score:0,status:'new'});setSaving(false);if(error)alert(error.message);else onCreated();}return <div className="modal-backdrop"><form className="login-card lead-form" onSubmit={submit}><button type="button" className="close" onClick={close}>×</button><h3>Add a real lead</h3><p>This record will be stored in Supabase immediately.</p><input required placeholder="Full name" value={name} onChange={e=>setName(e.target.value)}/><input placeholder="Phone" value={phone} onChange={e=>setPhone(e.target.value)}/><input placeholder="Company" value={company} onChange={e=>setCompany(e.target.value)}/><input type="number" placeholder="Estimated value ₹" value={value} onChange={e=>setValue(e.target.value)}/><button className="primary" disabled={saving}>{saving?'Saving…':'Save lead'}</button></form></div>}
+export default App;
